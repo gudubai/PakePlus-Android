@@ -78,6 +78,7 @@ canvas{display:block}
       <h1>芳芳大冒险</h1>
       <div class="subtitle">FANGFANG'S ADVENTURE</div>
       <button class="startBtn" onclick="startGame()">&#x25B6; 开始冒险</button>
+	  
       <div class="warning">&#x26A0; 警告：本游戏充满恶意陷阱，可能导致血压升高 &#x26A0;</div>
       <div class="controls">&#x2190;&#x2192; 移动 | &#x2191;/空格 跳跃 | 触屏支持</div>
       <div class="author">作者：孤嘟拜</div>
@@ -113,7 +114,7 @@ canvas{display:block}
 const TILE = 32;
 const GRAVITY = 0.18;
 const JUMP_FORCE = -7.0;
-const MOVE_SPEED = 1.8;
+const MOVE_SPEED = 1.6;
 const PLAYER_W = 24;
 const PLAYER_H = 30;
 
@@ -147,7 +148,23 @@ let deathMsgs = [
   '恭喜你发现了陷阱！','制作者：嘿嘿嘿','你猜下一个是什么陷阱？',
   '温馨提示：这是个恶意游戏','芳芳表示很无奈','你的第N次死亡',
   '建议直接看攻略（没有攻略）','不要相信任何砖块','那个旗子是假的哦~',
-  '要不...放弃吧？（不行！）','芳芳已经习惯了','这只是热身而已'
+  '要不...放弃吧？（不行！）','芳芳已经习惯了','这只是热身而已',
+  '你的操作令人窒息','芳芳：这游戏有毒！','恭喜解锁新死法！',
+  '你以为你能跳过去？天真','制作者已笑出腹肌','这砖块不太对劲啊...',
+  '死亡是通关的必经之路','你的手速配不上你的勇气','下面有刺，你看不见吗？',
+  '别怪游戏，怪你自己太菜','芳芳表示想回家','你踩到了制作者的陷阱',
+  '温馨提示：地面也不安全','你已超越99%的死亡次数','前方高能...算了你已经死了',
+  '这游戏的难度是你的100倍','跳！再跳啊！你怎么不跳了','芳芳：我恨这个游戏',
+  '你以为那是路？不，那是坑','提示：往上看（可能也有刺）','制作者在直播你的死亡',
+  '恭喜你第114514次死亡','芳芳的血压已经爆表','你需要一杯茶冷静一下',
+  '请问你在玩游戏还是游戏在玩你','这个死法很有创意','芳芳：我选择原地躺平',
+  '你已经被这个游戏折磨了多久？','相信我，下一次你肯定能过（骗你的）',
+  '死亡计数器已经快要溢出了','你知道吗？制作者通关用了3次（骗你的）',
+  '芳芳看了看天空，叹了口气','你是故意找死的吗？','这关至少有10个陷阱，你踩了几个？',
+  '小心头顶！小心脚下！小心左右！算了到处都不安全','恭喜你成为本游戏首席测试员',
+  '听说放弃的人都获得了快乐','你离通关只差亿点点','芳芳已经开始怀疑人生了',
+  '请勿将手机扔出窗外','制作者温馨提示：后面更离谱','你确定你在往前走吗？',
+  '问号砖里装的绝对不是好东西','芳芳的头发都气白了','哎呀，又死了呢~（坏笑）'
 ];
 
 let player = { x:0, y:0, vx:0, vy:0, onGround:false, facing:1, dead:false, frame:0 };
@@ -171,229 +188,581 @@ let levels = [];
 function createEmptyMap(w,h){
   let m=[];for(let r=0;r<h;r++){m[r]=[];for(let c=0;c<w;c++)m[r][c]=T.AIR;}return m;
 }
-function fillRow(m,row,sc,cnt,t){
+function F(m,row,sc,cnt,t){
   for(let i=0;i<cnt;i++) if(row>=0&&row<m.length&&sc+i>=0&&sc+i<m[0].length) m[row][sc+i]=t;
 }
+function fillRow(m,row,sc,cnt,t){ F(m,row,sc,cnt,t); }
 function clearRect(m,col,row,w,h){
   for(let r=0;r<h;r++)for(let c=0;c<w;c++) if(row+r<m.length&&col+c<m[0].length) m[row+r][col+c]=T.AIR;
 }
+function addGround(m,x,w){ F(m,13,x,w,T.GROUND); F(m,14,x,w,T.GROUND); }
+function addLava(m,x,w){ for(let i=x;i<x+w;i++){m[14][i]=T.LAVA; m[13][i]=T.AIR;} }
+function addFlag(m,col,row,real){ m[row][col]=real?T.FLAG_REAL:T.FLAG_FAKE; m[row-1][col]=real?T.FLAG_REAL:T.FLAG_FAKE; }
 
 function buildLevels(){
   levels = [];
-  // Max jump height ~3 tiles. Each step-up ≤ 3 tiles. H=15, ground=rows 13-14, player stands on row 12 surface.
-  // Row numbering: 0=top, 14=bottom. ground tiles at rows 13,14. Player feet on row 13 top.
+  // JUMP_FORCE=-7 => max jump ~4.25 tiles. step-ups ≤ 4 tiles safe.
+  // H=15, ground=rows 13-14. Player feet on row 13 surface (row 12 standing).
 
-  // ===== LEVEL 1: 信任崩塌 (Trust Collapse) =====
-  const L1_W=80, L1_H=15;
-  let m1=createEmptyMap(L1_W,L1_H);
-  fillRow(m1,13,0,L1_W,T.GROUND); fillRow(m1,14,0,L1_W,T.GROUND);
+  // ===== LEVEL 1: 信任崩塌 (Trust Collapse) — 150 tiles =====
+  (function(){
+    const W=150,H=15; let m=createEmptyMap(W,H); addGround(m,0,W);
+    m[12][1]=T.DECO_TREE; m[12][4]=T.DECO_FLOWER; m[12][8]=T.DECO_FLOWER; m[12][15]=T.DECO_TREE;
+    // Fall bricks over spikes
+    clearRect(m,12,13,4,2); F(m,12,12,4,T.FALL_BRICK); for(let i=12;i<16;i++) m[14][i]=T.SPIKE;
+    // Hidden spikes
+    m[12][20]=T.HIDDEN_SPIKE; m[12][22]=T.HIDDEN_SPIKE;
+    // Q-block trap
+    F(m,10,25,2,T.BRICK); m[10][27]=T.QBLOCK; F(m,10,28,2,T.BRICK);
+    // Lava pit
+    addLava(m,33,4); m[10][34]=T.BRICK; m[10][36]=T.BRICK;
+    // Spring trap
+    m[12][40]=T.SPRING_TRAP; F(m,4,39,3,T.SPIKE);
+    m[12][43]=T.DECO_FLOWER; m[12][46]=T.DECO_TREE;
+    // Fake flag
+    addFlag(m,50,12,false);
+    // Hidden pit
+    clearRect(m,53,13,3,2); for(let i=53;i<56;i++) m[14][i]=T.SPIKE;
+    // Fall brick lava path
+    addLava(m,60,8); for(let i=60;i<68;i++) m[11][i]=T.FALL_BRICK;
+    // More ground section
+    m[12][70]=T.HIDDEN_SPIKE; m[12][73]=T.HIDDEN_SPIKE;
+    m[12][76]=T.DECO_FLOWER; m[12][80]=T.DECO_TREE;
+    // Second Q-block
+    m[10][82]=T.QBLOCK; F(m,10,83,2,T.BRICK);
+    // Lava + platforms
+    addLava(m,87,6); m[10][88]=T.BRICK; m[10][90]=T.FALL_BRICK; m[10][92]=T.BRICK;
+    // Second fake flag
+    addFlag(m,97,12,false);
+    // More traps
+    m[12][100]=T.HIDDEN_SPIKE; m[12][103]=T.SPRING_TRAP; F(m,4,102,3,T.SPIKE);
+    // REAL PATH: stepping stones
+    F(m,9,108,2,T.BRICK); F(m,5,112,3,T.BRICK); F(m,5,117,3,T.BRICK);
+    F(m,5,122,3,T.BRICK); F(m,7,127,3,T.BRICK); F(m,9,131,3,T.BRICK);
+    // Flag platform
+    F(m,11,135,5,T.GROUND); F(m,10,135,5,T.GROUND);
+    addFlag(m,137,10,true); m[10][136]=T.DECO_FLOWER;
+    // Clouds
+    m[2][5]=T.CLOUD;m[2][6]=T.CLOUD;m[3][30]=T.CLOUD;m[3][31]=T.CLOUD;
+    m[2][55]=T.CLOUD;m[2][56]=T.CLOUD;m[3][80]=T.CLOUD;m[3][81]=T.CLOUD;
+    m[2][110]=T.CLOUD;m[2][111]=T.CLOUD;m[3][130]=T.CLOUD;
+    let en=[
+      {x:18*TILE,y:12*TILE,type:'walker'},{x:30*TILE,y:12*TILE,type:'walker'},
+      {x:38*TILE,y:12*TILE,type:'walker'},{x:48*TILE,y:12*TILE,type:'jumper'},
+      {x:65*TILE,y:12*TILE,type:'walker'},{x:75*TILE,y:12*TILE,type:'walker'},
+      {x:85*TILE,y:12*TILE,type:'jumper'},{x:95*TILE,y:12*TILE,type:'walker'},
+      {x:105*TILE,y:12*TILE,type:'walker'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'信任崩塌',bgColor1:'#5c94fc',bgColor2:'#87CEEB'});
+  })();
 
-  // Deco
-  m1[12][1]=T.DECO_TREE; m1[12][3]=T.DECO_FLOWER; m1[12][6]=T.DECO_FLOWER; m1[12][9]=T.DECO_FLOWER;
+  // ===== LEVEL 2: 天降正义 (Justice From Above) — 160 tiles =====
+  (function(){
+    const W=160,H=15; let m=createEmptyMap(W,H); addGround(m,0,W);
+    m[12][2]=T.DECO_TREE; m[12][5]=T.DECO_FLOWER; m[12][8]=T.DECO_FLOWER;
+    // Staircase with traps
+    for(let i=0;i<5;i++){let r=12-i,c=10+i*2; m[r][c]=T.BRICK; m[r][c+1]=T.BRICK; if(i===2||i===4) m[r][c+1]=T.HIDDEN_SPIKE;}
+    // Q-blocks
+    m[9][26]=T.QBLOCK; m[9][30]=T.QBLOCK; m[9][34]=T.QBLOCK;
+    // Lava with fall bricks
+    addLava(m,38,10); m[10][39]=T.FALL_BRICK; m[10][41]=T.FALL_BRICK; m[10][43]=T.FALL_BRICK; m[10][45]=T.BRICK; m[10][47]=T.BRICK;
+    // Spring traps
+    m[12][52]=T.SPRING_TRAP; m[12][55]=T.SPRING_TRAP; F(m,4,51,6,T.SPIKE);
+    m[12][58]=T.HIDDEN_SPIKE; m[12][60]=T.HIDDEN_SPIKE;
+    m[12][50]=T.DECO_TREE;
+    // Elevated corridor
+    for(let i=65;i<76;i++){m[11][i]=T.GROUND; m[10][i]=T.GROUND;}
+    m[12][67]=T.HIDDEN_SPIKE; m[12][70]=T.HIDDEN_SPIKE; m[12][73]=T.HIDDEN_SPIKE;
+    // Fake flag
+    addFlag(m,80,12,false);
+    // More ground traps
+    m[12][84]=T.HIDDEN_SPIKE; m[12][87]=T.SPRING_TRAP; F(m,4,86,3,T.SPIKE);
+    // Second lava section
+    addLava(m,90,8); m[10][91]=T.BRICK; m[10][93]=T.FALL_BRICK; m[10][95]=T.BRICK; m[10][97]=T.BRICK;
+    // Q-block gauntlet
+    m[9][102]=T.QBLOCK; m[9][106]=T.QBLOCK;
+    m[12][104]=T.DECO_FLOWER; m[12][108]=T.DECO_TREE;
+    // Second fake flag
+    addFlag(m,112,12,false);
+    // Hidden spike corridor
+    m[12][115]=T.HIDDEN_SPIKE; m[12][118]=T.HIDDEN_SPIKE; m[12][121]=T.HIDDEN_SPIKE;
+    // REAL PATH
+    F(m,9,125,2,T.BRICK); F(m,5,129,3,T.BRICK); F(m,5,134,3,T.BRICK);
+    F(m,7,139,3,T.BRICK); F(m,9,143,3,T.BRICK);
+    // Flag
+    F(m,11,147,5,T.GROUND); F(m,10,147,5,T.GROUND);
+    addFlag(m,149,10,true); m[10][148]=T.DECO_FLOWER;
+    // Clouds
+    m[2][12]=T.CLOUD;m[2][13]=T.CLOUD;m[3][40]=T.CLOUD;m[3][41]=T.CLOUD;
+    m[2][70]=T.CLOUD;m[2][71]=T.CLOUD;m[3][100]=T.CLOUD;m[3][101]=T.CLOUD;
+    m[2][130]=T.CLOUD;m[2][131]=T.CLOUD;m[3][148]=T.CLOUD;
+    let en=[
+      {x:16*TILE,y:12*TILE,type:'walker'},{x:25*TILE,y:12*TILE,type:'walker'},
+      {x:36*TILE,y:12*TILE,type:'walker'},{x:50*TILE,y:12*TILE,type:'jumper'},
+      {x:62*TILE,y:12*TILE,type:'walker'},{x:78*TILE,y:12*TILE,type:'walker'},
+      {x:86*TILE,y:12*TILE,type:'jumper'},{x:100*TILE,y:12*TILE,type:'walker'},
+      {x:110*TILE,y:12*TILE,type:'walker'},{x:120*TILE,y:12*TILE,type:'jumper'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'天降正义',bgColor1:'#ff9a56',bgColor2:'#ffcc80'});
+  })();
 
-  // 1) Fall brick trap over spikes (x=12-14)
-  clearRect(m1,12,13,3,2);
-  m1[12][12]=T.FALL_BRICK; m1[12][13]=T.FALL_BRICK; m1[12][14]=T.FALL_BRICK;
-  m1[14][12]=T.SPIKE; m1[14][13]=T.SPIKE; m1[14][14]=T.SPIKE;
+  // ===== LEVEL 3: 陷阱迷宫 (Trap Maze) — 170 tiles =====
+  (function(){
+    const W=170,H=15; let m=createEmptyMap(W,H); addGround(m,0,W);
+    m[12][2]=T.DECO_TREE; m[12][5]=T.DECO_FLOWER;
+    // Hidden spike gauntlet
+    for(let i=8;i<18;i+=2) m[12][i]=T.HIDDEN_SPIKE;
+    // Lava platforming
+    addLava(m,20,22); [21,24,27,30,33,36,39].forEach((x,i)=>{ m[10][x]=(i%3===1)?T.FALL_BRICK:T.BRICK; });
+    m[7][24]=T.QBLOCK; m[7][33]=T.QBLOCK;
+    // Spring trap
+    m[12][45]=T.SPRING_TRAP; F(m,4,44,3,T.SPIKE);
+    // Elevated bricks with hidden spikes
+    F(m,12,50,12,T.BRICK); m[11][52]=T.HIDDEN_SPIKE; m[11][55]=T.HIDDEN_SPIKE; m[11][58]=T.HIDDEN_SPIKE;
+    // Three fake flags!
+    addFlag(m,65,12,false); addFlag(m,72,12,false); addFlag(m,79,12,false);
+    m[12][68]=T.DECO_FLOWER; m[12][75]=T.DECO_TREE;
+    // More lava
+    addLava(m,82,10); [83,86,89].forEach(x=>{ m[10][x]=T.BRICK; }); m[10][91]=T.FALL_BRICK;
+    // Q-blocks
+    m[9][96]=T.QBLOCK; m[9][100]=T.QBLOCK;
+    // Hidden spikes
+    m[12][104]=T.HIDDEN_SPIKE; m[12][107]=T.HIDDEN_SPIKE;
+    // Spring + lava
+    m[12][110]=T.SPRING_TRAP; F(m,3,109,4,T.SPIKE);
+    addLava(m,114,6); m[10][115]=T.BRICK; m[10][117]=T.FALL_BRICK; m[10][119]=T.BRICK;
+    // Another fake flag
+    addFlag(m,124,12,false);
+    m[12][127]=T.HIDDEN_SPIKE; m[12][130]=T.HIDDEN_SPIKE;
+    // REAL PATH
+    F(m,9,133,2,T.BRICK); F(m,5,137,3,T.BRICK); F(m,5,142,3,T.BRICK);
+    F(m,5,147,3,T.BRICK); F(m,7,152,3,T.BRICK); F(m,9,156,3,T.BRICK);
+    // Flag
+    F(m,11,160,5,T.GROUND); F(m,10,160,5,T.GROUND);
+    addFlag(m,162,10,true); m[10][161]=T.DECO_FLOWER;
+    // Clouds
+    m[2][10]=T.CLOUD;m[2][11]=T.CLOUD;m[3][35]=T.CLOUD;m[3][36]=T.CLOUD;
+    m[2][60]=T.CLOUD;m[2][61]=T.CLOUD;m[3][90]=T.CLOUD;m[3][91]=T.CLOUD;
+    m[2][120]=T.CLOUD;m[2][121]=T.CLOUD;m[3][150]=T.CLOUD;m[3][151]=T.CLOUD;
+    let en=[
+      {x:14*TILE,y:12*TILE,type:'walker'},{x:28*TILE,y:12*TILE,type:'jumper'},
+      {x:42*TILE,y:12*TILE,type:'walker'},{x:56*TILE,y:12*TILE,type:'walker'},
+      {x:70*TILE,y:12*TILE,type:'jumper'},{x:85*TILE,y:12*TILE,type:'walker'},
+      {x:98*TILE,y:12*TILE,type:'walker'},{x:108*TILE,y:12*TILE,type:'jumper'},
+      {x:122*TILE,y:12*TILE,type:'walker'},{x:135*TILE,y:12*TILE,type:'walker'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'陷阱迷宫',bgColor1:'#6c5ce7',bgColor2:'#a29bfe'});
+  })();
 
-  // 2) Platforms above — reachable from ground (3 tiles up = row 10)
-  fillRow(m1,10,8,3,T.BRICK);
+  // ===== LEVEL 4: 岩浆地狱 (Lava Hell) — 180 tiles =====
+  (function(){
+    const W=180,H=15; let m=createEmptyMap(W,H);
+    addGround(m,0,14); m[12][1]=T.DECO_TREE; m[12][5]=T.DECO_FLOWER;
+    // Lava gap 1
+    addLava(m,14,8); m[10][15]=T.FALL_BRICK; m[10][17]=T.BRICK; m[10][19]=T.FALL_BRICK; m[10][21]=T.BRICK;
+    addGround(m,22,8); m[12][23]=T.HIDDEN_SPIKE; m[12][26]=T.HIDDEN_SPIKE;
+    m[9][25]=T.QBLOCK; m[9][28]=T.QBLOCK;
+    // Lava gap 2 — long
+    addLava(m,30,22); [31,34,37,40,43,46,49,51].forEach((x,i)=>{ m[10][x]=(i===2||i===5)?T.FALL_BRICK:T.BRICK; });
+    m[5][37]=T.SPIKE; m[5][43]=T.SPIKE; m[5][49]=T.SPIKE;
+    addGround(m,52,8); m[12][53]=T.SPRING_TRAP; F(m,3,52,4,T.SPIKE);
+    m[12][56]=T.DECO_FLOWER; m[12][58]=T.DECO_TREE;
+    // Fake flag
+    addFlag(m,62,12,false);
+    addGround(m,60,8); m[12][64]=T.HIDDEN_SPIKE; m[12][66]=T.HIDDEN_SPIKE;
+    // Lava gap 3 with Q-blocks
+    addLava(m,68,14); [69,72,75,78,81].forEach(x=>m[10][x]=T.BRICK); m[7][72]=T.QBLOCK; m[7][78]=T.QBLOCK;
+    addGround(m,82,6);
+    // Another spring trap corridor
+    m[12][84]=T.SPRING_TRAP; m[12][86]=T.SPRING_TRAP; F(m,3,83,5,T.SPIKE);
+    addGround(m,88,10); m[12][90]=T.HIDDEN_SPIKE; m[12][93]=T.HIDDEN_SPIKE; m[12][96]=T.HIDDEN_SPIKE;
+    // Second fake flag
+    addFlag(m,100,12,false);
+    addGround(m,98,6);
+    // Big lava crossing
+    addLava(m,104,20); [105,108,111,114,117,120,123].forEach((x,i)=>{ m[10][x]=(i%3===2)?T.FALL_BRICK:T.BRICK; });
+    addGround(m,124,6); m[12][126]=T.DECO_TREE;
+    // Hidden spike corridor
+    m[12][128]=T.HIDDEN_SPIKE; m[12][131]=T.HIDDEN_SPIKE;
+    addGround(m,130,8);
+    // REAL PATH: vertical ascent
+    F(m,9,138,2,T.BRICK); F(m,5,142,3,T.BRICK); F(m,5,147,3,T.BRICK);
+    F(m,5,152,3,T.BRICK); F(m,7,157,3,T.BRICK); F(m,9,161,3,T.BRICK);
+    // Flag
+    addGround(m,165,6); F(m,11,167,4,T.GROUND); F(m,10,167,4,T.GROUND);
+    addFlag(m,169,10,true); m[10][168]=T.DECO_FLOWER;
+    // Clouds
+    m[2][8]=T.CLOUD;m[2][9]=T.CLOUD;m[3][35]=T.CLOUD;m[3][36]=T.CLOUD;
+    m[2][65]=T.CLOUD;m[2][66]=T.CLOUD;m[3][95]=T.CLOUD;m[3][96]=T.CLOUD;
+    m[2][125]=T.CLOUD;m[2][126]=T.CLOUD;m[3][155]=T.CLOUD;m[3][156]=T.CLOUD;
+    let en=[
+      {x:18*TILE,y:12*TILE,type:'walker'},{x:26*TILE,y:12*TILE,type:'walker'},
+      {x:40*TILE,y:9*TILE,type:'jumper'},{x:55*TILE,y:12*TILE,type:'walker'},
+      {x:63*TILE,y:12*TILE,type:'walker'},{x:73*TILE,y:9*TILE,type:'walker'},
+      {x:85*TILE,y:12*TILE,type:'jumper'},{x:92*TILE,y:12*TILE,type:'walker'},
+      {x:110*TILE,y:9*TILE,type:'walker'},{x:127*TILE,y:12*TILE,type:'jumper'},
+      {x:166*TILE,y:12*TILE,type:'walker'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'岩浆地狱',bgColor1:'#d63031',bgColor2:'#ff7675'});
+  })();
 
-  // 3) Hidden spikes on ground
-  m1[12][19]=T.HIDDEN_SPIKE; m1[12][20]=T.HIDDEN_SPIKE;
+  // ===== LEVEL 5: 弹簧噩梦 (Spring Nightmare) — 170 tiles =====
+  (function(){
+    const W=170,H=15; let m=createEmptyMap(W,H); addGround(m,0,W);
+    m[12][2]=T.DECO_TREE; m[12][6]=T.DECO_FLOWER;
+    // Spring trap gauntlet!
+    m[12][10]=T.SPRING_TRAP; F(m,4,9,3,T.SPIKE);
+    m[12][16]=T.SPRING_TRAP; F(m,4,15,3,T.SPIKE);
+    m[12][22]=T.SPRING_TRAP; F(m,4,21,3,T.SPIKE);
+    m[12][14]=T.DECO_FLOWER;
+    // Hidden spikes between springs
+    m[12][13]=T.HIDDEN_SPIKE; m[12][19]=T.HIDDEN_SPIKE;
+    // Lava section
+    addLava(m,28,10); [29,32,35,37].forEach(x=>m[10][x]=T.BRICK); m[10][33]=T.FALL_BRICK;
+    // Q-blocks
+    m[8][30]=T.QBLOCK; m[8][36]=T.QBLOCK;
+    // Safe zone with traps
+    m[12][40]=T.HIDDEN_SPIKE; m[12][43]=T.HIDDEN_SPIKE;
+    m[12][45]=T.DECO_TREE; m[12][48]=T.DECO_FLOWER;
+    // Fake flag
+    addFlag(m,52,12,false);
+    // Fall brick corridor
+    F(m,12,55,12,T.FALL_BRICK); addLava(m,55,12);
+    // More springs
+    m[12][70]=T.SPRING_TRAP; m[12][74]=T.SPRING_TRAP; m[12][78]=T.SPRING_TRAP;
+    F(m,3,69,12,T.SPIKE);
+    // Q-blocks
+    m[9][82]=T.QBLOCK; m[9][86]=T.QBLOCK;
+    m[12][84]=T.DECO_FLOWER;
+    // Hidden spikes
+    m[12][90]=T.HIDDEN_SPIKE; m[12][93]=T.HIDDEN_SPIKE; m[12][96]=T.HIDDEN_SPIKE;
+    // Second fake flag
+    addFlag(m,100,12,false);
+    // Lava + fall bricks
+    addLava(m,103,10); [104,106,108,110,112].forEach((x,i)=>{ m[10][x]=(i%2===0)?T.BRICK:T.FALL_BRICK; });
+    // More hidden spikes
+    m[12][115]=T.HIDDEN_SPIKE; m[12][118]=T.HIDDEN_SPIKE;
+    m[12][120]=T.DECO_TREE;
+    // Spring + hidden spike combo
+    m[12][124]=T.SPRING_TRAP; F(m,3,123,4,T.SPIKE);
+    m[12][128]=T.HIDDEN_SPIKE;
+    // REAL PATH
+    F(m,9,132,2,T.BRICK); F(m,5,136,3,T.BRICK); F(m,5,141,3,T.BRICK);
+    F(m,5,146,3,T.BRICK); F(m,7,151,3,T.BRICK); F(m,9,155,3,T.BRICK);
+    // Flag
+    F(m,11,159,5,T.GROUND); F(m,10,159,5,T.GROUND);
+    addFlag(m,161,10,true); m[10][160]=T.DECO_FLOWER;
+    // Clouds
+    m[2][8]=T.CLOUD;m[2][9]=T.CLOUD;m[3][30]=T.CLOUD;m[3][31]=T.CLOUD;
+    m[2][55]=T.CLOUD;m[2][56]=T.CLOUD;m[3][80]=T.CLOUD;m[3][81]=T.CLOUD;
+    m[2][110]=T.CLOUD;m[2][111]=T.CLOUD;m[3][140]=T.CLOUD;m[3][141]=T.CLOUD;
+    let en=[
+      {x:12*TILE,y:12*TILE,type:'walker'},{x:20*TILE,y:12*TILE,type:'jumper'},
+      {x:35*TILE,y:12*TILE,type:'walker'},{x:46*TILE,y:12*TILE,type:'walker'},
+      {x:60*TILE,y:12*TILE,type:'jumper'},{x:72*TILE,y:12*TILE,type:'walker'},
+      {x:88*TILE,y:12*TILE,type:'jumper'},{x:98*TILE,y:12*TILE,type:'walker'},
+      {x:114*TILE,y:12*TILE,type:'walker'},{x:126*TILE,y:12*TILE,type:'jumper'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'弹簧噩梦',bgColor1:'#00b894',bgColor2:'#55efc4'});
+  })();
 
-  // 4) Q-block trap (row 10, reachable from ground via jump)
-  fillRow(m1,10,23,2,T.BRICK); m1[10][25]=T.QBLOCK; fillRow(m1,10,26,2,T.BRICK);
-  m1[12][24]=T.DECO_FLOWER;
+  // ===== LEVEL 6: 假旗海洋 (Sea of Fake Flags) — 180 tiles =====
+  (function(){
+    const W=180,H=15; let m=createEmptyMap(W,H); addGround(m,0,W);
+    m[12][2]=T.DECO_TREE; m[12][6]=T.DECO_FLOWER;
+    // 6 fake flags scattered everywhere
+    [15,30,48,70,95,120].forEach(x=>addFlag(m,x,12,false));
+    // Hidden spikes near each fake flag
+    [13,28,46,68,93,118].forEach(x=>{ m[12][x]=T.HIDDEN_SPIKE; });
+    [17,32,50,72,97,122].forEach(x=>{ m[12][x]=T.HIDDEN_SPIKE; });
+    // Q-blocks
+    m[9][22]=T.QBLOCK; m[9][38]=T.QBLOCK; m[9][58]=T.QBLOCK; m[9][80]=T.QBLOCK; m[9][105]=T.QBLOCK;
+    // Lava sections
+    addLava(m,35,6); m[10][36]=T.BRICK; m[10][38]=T.BRICK; m[10][40]=T.BRICK;
+    addLava(m,55,8); [56,58,60,62].forEach(x=>m[10][x]=T.BRICK);
+    addLava(m,85,10); [86,89,92].forEach(x=>m[10][x]=T.BRICK); m[10][90]=T.FALL_BRICK;
+    addLava(m,110,8); [111,113,115,117].forEach(x=>m[10][x]=T.BRICK);
+    // Springs
+    m[12][42]=T.SPRING_TRAP; F(m,3,41,3,T.SPIKE);
+    m[12][75]=T.SPRING_TRAP; F(m,3,74,3,T.SPIKE);
+    m[12][128]=T.SPRING_TRAP; F(m,3,127,3,T.SPIKE);
+    // Deco
+    m[12][25]=T.DECO_TREE; m[12][45]=T.DECO_FLOWER; m[12][65]=T.DECO_TREE; m[12][100]=T.DECO_FLOWER; m[12][130]=T.DECO_TREE;
+    // Fall brick traps
+    clearRect(m,135,13,4,2); F(m,12,135,4,T.FALL_BRICK); for(let i=135;i<139;i++) m[14][i]=T.SPIKE;
+    // REAL PATH
+    F(m,9,143,2,T.BRICK); F(m,5,147,3,T.BRICK); F(m,5,152,3,T.BRICK);
+    F(m,5,157,3,T.BRICK); F(m,7,162,3,T.BRICK); F(m,9,166,3,T.BRICK);
+    // Flag
+    F(m,11,170,5,T.GROUND); F(m,10,170,5,T.GROUND);
+    addFlag(m,172,10,true); m[10][171]=T.DECO_FLOWER;
+    // Clouds
+    m[2][10]=T.CLOUD;m[2][11]=T.CLOUD;m[3][40]=T.CLOUD;m[3][41]=T.CLOUD;
+    m[2][65]=T.CLOUD;m[2][66]=T.CLOUD;m[3][90]=T.CLOUD;m[3][91]=T.CLOUD;
+    m[2][115]=T.CLOUD;m[2][116]=T.CLOUD;m[3][150]=T.CLOUD;m[3][151]=T.CLOUD;
+    let en=[
+      {x:12*TILE,y:12*TILE,type:'walker'},{x:24*TILE,y:12*TILE,type:'jumper'},
+      {x:34*TILE,y:12*TILE,type:'walker'},{x:44*TILE,y:12*TILE,type:'walker'},
+      {x:54*TILE,y:12*TILE,type:'jumper'},{x:66*TILE,y:12*TILE,type:'walker'},
+      {x:78*TILE,y:12*TILE,type:'jumper'},{x:88*TILE,y:12*TILE,type:'walker'},
+      {x:104*TILE,y:12*TILE,type:'walker'},{x:119*TILE,y:12*TILE,type:'jumper'},
+      {x:132*TILE,y:12*TILE,type:'walker'},{x:140*TILE,y:12*TILE,type:'walker'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'假旗海洋',bgColor1:'#e17055',bgColor2:'#fab1a0'});
+  })();
 
-  // 5) Lava pit (x=30-32)
-  clearRect(m1,30,13,3,2);
-  m1[14][30]=T.LAVA; m1[14][31]=T.LAVA; m1[14][32]=T.LAVA;
-  m1[10][30]=T.BRICK; m1[10][32]=T.BRICK;
+  // ===== LEVEL 7: 空中走廊 (Sky Corridor) — 190 tiles =====
+  (function(){
+    const W=190,H=15; let m=createEmptyMap(W,H);
+    // Only scattered ground — mostly sky platforms
+    addGround(m,0,10);
+    m[12][2]=T.DECO_TREE; m[12][6]=T.DECO_FLOWER;
+    // Platform path (mix brick/fall brick)
+    F(m,10,12,3,T.BRICK); F(m,10,17,3,T.FALL_BRICK); F(m,10,22,3,T.BRICK);
+    F(m,8,27,3,T.BRICK); F(m,8,32,3,T.FALL_BRICK); F(m,8,37,3,T.BRICK);
+    F(m,6,42,3,T.BRICK); F(m,6,47,3,T.BRICK);
+    // Q-blocks in sky
+    m[4][44]=T.QBLOCK; m[4][48]=T.QBLOCK;
+    // Descend
+    F(m,8,52,3,T.BRICK); F(m,10,57,3,T.BRICK);
+    addGround(m,60,8); m[12][62]=T.HIDDEN_SPIKE; m[12][65]=T.HIDDEN_SPIKE;
+    // Fake flag
+    addFlag(m,70,12,false);
+    addGround(m,68,6);
+    // Second sky section
+    F(m,10,76,3,T.BRICK); F(m,8,81,3,T.FALL_BRICK); F(m,8,86,3,T.BRICK);
+    F(m,6,91,3,T.BRICK); F(m,6,96,3,T.BRICK); F(m,6,101,3,T.FALL_BRICK);
+    F(m,6,106,3,T.BRICK);
+    // Q-blocks
+    m[3][93]=T.QBLOCK; m[3][103]=T.QBLOCK;
+    // Descend
+    F(m,8,111,3,T.BRICK); F(m,10,116,3,T.BRICK);
+    addGround(m,119,8); m[12][121]=T.SPRING_TRAP; F(m,3,120,3,T.SPIKE);
+    m[12][124]=T.HIDDEN_SPIKE;
+    // Second fake flag
+    addFlag(m,128,12,false);
+    addGround(m,127,6);
+    // Third sky section
+    F(m,10,135,3,T.BRICK); F(m,8,140,3,T.BRICK); F(m,6,145,3,T.BRICK);
+    F(m,6,150,3,T.FALL_BRICK); F(m,6,155,3,T.BRICK); F(m,6,160,3,T.BRICK);
+    // Descend to flag
+    F(m,8,165,3,T.BRICK); F(m,10,170,3,T.BRICK);
+    // Flag platform
+    addGround(m,174,8); F(m,11,178,4,T.GROUND); F(m,10,178,4,T.GROUND);
+    addFlag(m,180,10,true); m[10][179]=T.DECO_FLOWER;
+    // Lava at bottom everywhere else
+    for(let i=10;i<174;i++) if(m[14][i]===T.AIR) m[14][i]=T.LAVA;
+    // Clouds
+    m[2][15]=T.CLOUD;m[2][16]=T.CLOUD;m[3][45]=T.CLOUD;m[3][46]=T.CLOUD;
+    m[2][75]=T.CLOUD;m[2][76]=T.CLOUD;m[3][105]=T.CLOUD;m[3][106]=T.CLOUD;
+    m[2][140]=T.CLOUD;m[2][141]=T.CLOUD;m[3][170]=T.CLOUD;m[3][171]=T.CLOUD;
+    let en=[
+      {x:14*TILE,y:9*TILE,type:'walker'},{x:24*TILE,y:9*TILE,type:'jumper'},
+      {x:39*TILE,y:7*TILE,type:'walker'},{x:54*TILE,y:7*TILE,type:'walker'},
+      {x:63*TILE,y:12*TILE,type:'walker'},{x:83*TILE,y:7*TILE,type:'jumper'},
+      {x:98*TILE,y:5*TILE,type:'walker'},{x:113*TILE,y:7*TILE,type:'walker'},
+      {x:122*TILE,y:12*TILE,type:'jumper'},{x:147*TILE,y:5*TILE,type:'walker'},
+      {x:162*TILE,y:5*TILE,type:'jumper'},{x:176*TILE,y:12*TILE,type:'walker'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'空中走廊',bgColor1:'#0984e3',bgColor2:'#74b9ff'});
+  })();
 
-  // 6) Spring trap (launches into ceiling spikes)
-  m1[12][36]=T.SPRING_TRAP;
-  m1[5][35]=T.SPIKE; m1[5][36]=T.SPIKE; m1[5][37]=T.SPIKE;
+  // ===== LEVEL 8: 地狱阶梯 (Hell Stairs) — 180 tiles =====
+  (function(){
+    const W=180,H=15; let m=createEmptyMap(W,H); addGround(m,0,W);
+    m[12][2]=T.DECO_TREE; m[12][5]=T.DECO_FLOWER;
+    // Staircase up with traps on every other step
+    for(let i=0;i<8;i++){let r=12-i,c=8+i*3; F(m,r,c,2,T.BRICK); if(i%2===1) m[r][c+1]=T.HIDDEN_SPIKE;}
+    // Elevated section
+    for(let i=34;i<50;i++){m[5][i]=T.GROUND; m[6][i]=T.GROUND;}
+    m[4][36]=T.HIDDEN_SPIKE; m[4][40]=T.HIDDEN_SPIKE; m[4][44]=T.HIDDEN_SPIKE; m[4][48]=T.HIDDEN_SPIKE;
+    // Descend
+    for(let i=0;i<6;i++){let r=6+i,c=50+i*2; F(m,r,c,2,T.BRICK);}
+    // Ground section
+    m[12][64]=T.SPRING_TRAP; F(m,3,63,3,T.SPIKE); m[12][68]=T.HIDDEN_SPIKE;
+    addFlag(m,72,12,false);
+    // Lava section
+    addLava(m,75,12); [76,79,82,85].forEach(x=>m[10][x]=T.BRICK); m[10][80]=T.FALL_BRICK;
+    m[9][78]=T.QBLOCK; m[9][84]=T.QBLOCK;
+    // More stairs up
+    for(let i=0;i<6;i++){let r=12-i,c=90+i*3; F(m,r,c,2,T.BRICK); if(i===2||i===4) m[r][c]=T.HIDDEN_SPIKE;}
+    // Upper path
+    for(let i=108;i<120;i++){m[6][i]=T.GROUND; m[7][i]=T.GROUND;}
+    m[5][110]=T.HIDDEN_SPIKE; m[5][114]=T.HIDDEN_SPIKE;
+    addFlag(m,115,6,false);
+    // Descend
+    for(let i=0;i<5;i++){let r=7+i,c=120+i*2; F(m,r,c,2,T.BRICK);}
+    // More ground
+    m[12][132]=T.HIDDEN_SPIKE; m[12][135]=T.SPRING_TRAP; F(m,3,134,3,T.SPIKE);
+    addLava(m,138,8); [139,141,143,145].forEach(x=>m[10][x]=T.BRICK);
+    addFlag(m,150,12,false);
+    // REAL PATH
+    F(m,9,153,2,T.BRICK); F(m,5,157,3,T.BRICK); F(m,5,162,3,T.BRICK);
+    F(m,7,167,3,T.BRICK);
+    // Flag
+    F(m,11,171,5,T.GROUND); F(m,10,171,5,T.GROUND);
+    addFlag(m,173,10,true); m[10][172]=T.DECO_FLOWER;
+    // Clouds
+    m[2][10]=T.CLOUD;m[2][11]=T.CLOUD;m[3][40]=T.CLOUD;m[3][41]=T.CLOUD;
+    m[2][70]=T.CLOUD;m[2][71]=T.CLOUD;m[3][100]=T.CLOUD;m[3][101]=T.CLOUD;
+    m[2][130]=T.CLOUD;m[2][131]=T.CLOUD;m[3][160]=T.CLOUD;m[3][161]=T.CLOUD;
+    let en=[
+      {x:14*TILE,y:12*TILE,type:'walker'},{x:25*TILE,y:12*TILE,type:'jumper'},
+      {x:38*TILE,y:4*TILE,type:'walker'},{x:45*TILE,y:4*TILE,type:'jumper'},
+      {x:58*TILE,y:12*TILE,type:'walker'},{x:66*TILE,y:12*TILE,type:'walker'},
+      {x:78*TILE,y:9*TILE,type:'jumper'},{x:95*TILE,y:12*TILE,type:'walker'},
+      {x:112*TILE,y:5*TILE,type:'walker'},{x:130*TILE,y:12*TILE,type:'jumper'},
+      {x:142*TILE,y:9*TILE,type:'walker'},{x:172*TILE,y:12*TILE,type:'walker'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'地狱阶梯',bgColor1:'#fdcb6e',bgColor2:'#ffeaa7'});
+  })();
 
-  m1[12][38]=T.DECO_FLOWER; m1[12][40]=T.DECO_TREE;
+  // ===== LEVEL 9: 混沌试炼 (Chaos Trial) — 200 tiles =====
+  (function(){
+    const W=200,H=15; let m=createEmptyMap(W,H); addGround(m,0,W);
+    m[12][2]=T.DECO_TREE; m[12][5]=T.DECO_FLOWER;
+    // ALL trap types mixed together
+    m[12][9]=T.HIDDEN_SPIKE; m[12][11]=T.SPRING_TRAP; F(m,3,10,3,T.SPIKE);
+    m[12][15]=T.HIDDEN_SPIKE;
+    // Lava + fall bricks
+    addLava(m,18,8); [19,21,23,25].forEach(x=>m[10][x]=T.FALL_BRICK);
+    m[8][20]=T.QBLOCK; m[8][24]=T.QBLOCK;
+    // Spring chain
+    m[12][30]=T.SPRING_TRAP; m[12][34]=T.SPRING_TRAP; m[12][38]=T.SPRING_TRAP;
+    F(m,3,29,12,T.SPIKE);
+    m[12][32]=T.HIDDEN_SPIKE; m[12][36]=T.HIDDEN_SPIKE;
+    addFlag(m,42,12,false);
+    m[12][44]=T.DECO_TREE; m[12][47]=T.DECO_FLOWER;
+    // Fall brick floor trap
+    clearRect(m,50,13,6,2); F(m,12,50,6,T.FALL_BRICK); for(let i=50;i<56;i++) m[14][i]=T.SPIKE;
+    // Lava marathon
+    addLava(m,58,16); [59,62,65,68,71,73].forEach((x,i)=>{ m[10][x]=(i%3===1)?T.FALL_BRICK:T.BRICK; });
+    m[7][62]=T.QBLOCK; m[7][68]=T.QBLOCK;
+    // Safe zone
+    m[12][78]=T.HIDDEN_SPIKE; m[12][80]=T.HIDDEN_SPIKE;
+    addFlag(m,84,12,false);
+    m[12][82]=T.DECO_FLOWER;
+    // Staircase with all traps
+    for(let i=0;i<7;i++){let r=12-i,c=88+i*2; F(m,r,c,2,T.BRICK); if(i%2===0&&i>0) m[r][c]=T.HIDDEN_SPIKE;}
+    // Upper platform section
+    for(let i=103;i<115;i++){m[5][i]=T.GROUND; m[6][i]=T.GROUND;}
+    m[4][105]=T.HIDDEN_SPIKE; m[4][108]=T.HIDDEN_SPIKE; m[4][112]=T.HIDDEN_SPIKE;
+    m[4][110]=T.SPRING_TRAP; F(m,0,109,3,T.SPIKE);
+    // Descend
+    F(m,7,115,2,T.BRICK); F(m,9,119,2,T.BRICK); F(m,11,123,2,T.BRICK);
+    // Ground chaos
+    m[12][128]=T.SPRING_TRAP; F(m,3,127,3,T.SPIKE);
+    m[12][132]=T.HIDDEN_SPIKE; m[12][135]=T.HIDDEN_SPIKE;
+    addLava(m,138,10); [139,142,145,147].forEach(x=>m[10][x]=T.BRICK);
+    addFlag(m,152,12,false); addFlag(m,158,12,false);
+    m[12][155]=T.HIDDEN_SPIKE; m[12][160]=T.HIDDEN_SPIKE;
+    m[12][163]=T.DECO_TREE;
+    // More Q-blocks
+    m[9][166]=T.QBLOCK; m[9][170]=T.QBLOCK;
+    // REAL PATH
+    F(m,9,175,2,T.BRICK); F(m,5,179,3,T.BRICK); F(m,5,184,3,T.BRICK);
+    F(m,7,189,3,T.BRICK);
+    // Flag
+    F(m,11,193,5,T.GROUND); F(m,10,193,5,T.GROUND);
+    addFlag(m,195,10,true); m[10][194]=T.DECO_FLOWER;
+    // Clouds
+    m[2][8]=T.CLOUD;m[2][9]=T.CLOUD;m[3][35]=T.CLOUD;m[3][36]=T.CLOUD;
+    m[2][60]=T.CLOUD;m[2][61]=T.CLOUD;m[3][90]=T.CLOUD;m[3][91]=T.CLOUD;
+    m[2][120]=T.CLOUD;m[2][121]=T.CLOUD;m[3][150]=T.CLOUD;m[3][151]=T.CLOUD;
+    m[2][180]=T.CLOUD;m[2][181]=T.CLOUD;
+    let en=[
+      {x:13*TILE,y:12*TILE,type:'walker'},{x:22*TILE,y:12*TILE,type:'jumper'},
+      {x:32*TILE,y:12*TILE,type:'walker'},{x:45*TILE,y:12*TILE,type:'walker'},
+      {x:55*TILE,y:12*TILE,type:'jumper'},{x:65*TILE,y:9*TILE,type:'walker'},
+      {x:80*TILE,y:12*TILE,type:'walker'},{x:95*TILE,y:12*TILE,type:'jumper'},
+      {x:107*TILE,y:4*TILE,type:'walker'},{x:125*TILE,y:12*TILE,type:'walker'},
+      {x:140*TILE,y:9*TILE,type:'jumper'},{x:155*TILE,y:12*TILE,type:'walker'},
+      {x:168*TILE,y:12*TILE,type:'jumper'},{x:194*TILE,y:12*TILE,type:'walker'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'混沌试炼',bgColor1:'#6c5ce7',bgColor2:'#dfe6e9'});
+  })();
 
-  // 7) FAKE FLAG at x=45 (touching = death)
-  m1[11][45]=T.FLAG_FAKE; m1[12][45]=T.FLAG_FAKE;
-
-  // 8) Hidden pit after fake flag
-  clearRect(m1,48,13,2,2);
-  m1[14][48]=T.SPIKE; m1[14][49]=T.SPIKE;
-
-  // 9) Fall brick path over lava (x=52-57)
-  for(let i=52;i<58;i++) m1[11][i]=T.FALL_BRICK;
-  clearRect(m1,52,13,6,2);
-  for(let i=52;i<58;i++) m1[14][i]=T.LAVA;
-
-  // 10) REAL PATH — stepping stones up to upper route
-  // Ground -> row 10 step (x=42-43) -> row 7 step (x=45-46) -> row 7 path continues
-  fillRow(m1,10,42,2,T.BRICK);  // step 1: ground->row10 (3 tiles up, reachable)
-  fillRow(m1,7,45,3,T.BRICK);   // step 2: row10->row7 (3 tiles up, reachable)
-  fillRow(m1,7,50,3,T.BRICK);   // continue upper path
-  fillRow(m1,7,55,3,T.BRICK);
-  fillRow(m1,8,59,3,T.BRICK);   // slight step down
-
-  // Real flag platform & flag
-  fillRow(m1,10,63,5,T.GROUND); fillRow(m1,9,63,5,T.GROUND);
-  m1[8][65]=T.FLAG_REAL; m1[7][65]=T.FLAG_REAL;
-  m1[8][64]=T.DECO_FLOWER;
-
-  // Clouds
-  m1[2][5]=T.CLOUD; m1[2][6]=T.CLOUD; m1[3][25]=T.CLOUD; m1[3][26]=T.CLOUD;
-  m1[2][45]=T.CLOUD; m1[2][46]=T.CLOUD; m1[3][60]=T.CLOUD; m1[3][61]=T.CLOUD;
-
-  let e1=[
-    {x:17*TILE,y:12*TILE,type:'walker'},
-    {x:28*TILE,y:12*TILE,type:'walker'},
-    {x:34*TILE,y:12*TILE,type:'walker'},
-    {x:51*TILE,y:12*TILE,type:'walker'},
-  ];
-  levels.push({map:m1,w:L1_W,h:L1_H,startX:2*TILE,startY:11*TILE,enemies:e1,name:'信任崩塌',bgColor1:'#5c94fc',bgColor2:'#87CEEB'});
-
-
-  // ===== LEVEL 2: 天降正义 (Justice From Above) =====
-  const L2_W=95, L2_H=15;
-  let m2=createEmptyMap(L2_W,L2_H);
-  fillRow(m2,13,0,L2_W,T.GROUND); fillRow(m2,14,0,L2_W,T.GROUND);
-
-  m2[12][2]=T.DECO_TREE; m2[12][5]=T.DECO_FLOWER; m2[12][7]=T.DECO_FLOWER;
-
-  // 1) Staircase with hidden spikes on some steps
-  for(let i=0;i<5;i++){
-    let r=12-i, c=10+i*2;
-    m2[r][c]=T.BRICK; m2[r][c+1]=T.BRICK;
-    if(i===2||i===4) m2[r][c+1]=T.HIDDEN_SPIKE; // trap on steps 3 and 5
-  }
-
-  // 2) Q-blocks (row 9, reachable from staircase top row 8)
-  m2[9][26]=T.QBLOCK; m2[9][30]=T.QBLOCK; m2[9][34]=T.QBLOCK;
-  m2[12][25]=T.DECO_FLOWER;
-
-  // 3) Lava pit with fall bricks (x=38-46)
-  clearRect(m2,38,13,9,2);
-  for(let i=38;i<47;i++) m2[14][i]=T.LAVA;
-  m2[10][39]=T.FALL_BRICK; m2[10][41]=T.FALL_BRICK; m2[10][43]=T.FALL_BRICK;
-  m2[10][45]=T.BRICK; // only last one is real
-
-  // 4) Spring trap zone (x=50,52) with ceiling spikes
-  m2[12][50]=T.SPRING_TRAP; m2[12][52]=T.SPRING_TRAP;
-  fillRow(m2,4,49,5,T.SPIKE);
-
-  // 5) Hidden spikes on flat ground
-  m2[12][56]=T.HIDDEN_SPIKE; m2[12][58]=T.HIDDEN_SPIKE;
-
-  m2[12][48]=T.DECO_TREE; m2[12][54]=T.DECO_FLOWER;
-
-  // 6) Elevated corridor (rows 11-12, x=60-68) with hidden spikes inside
-  for(let i=60;i<69;i++){m2[11][i]=T.GROUND; m2[10][i]=T.GROUND;}
-  m2[12][62]=T.HIDDEN_SPIKE; m2[12][65]=T.HIDDEN_SPIKE;
-
-  // 7) FAKE FLAG
-  m2[11][72]=T.FLAG_FAKE; m2[12][72]=T.FLAG_FAKE;
-
-  // 8) REAL PATH — stepping stones from corridor up
-  // From corridor top (row 10, x=60-68) -> row 7 (x=63-65) -> row 7 continues
-  fillRow(m2,7,63,3,T.BRICK);    // step: row10->row7 (3 tiles, reachable)
-  fillRow(m2,7,68,3,T.BRICK);    // continue
-  fillRow(m2,7,73,3,T.BRICK);
-
-  // Flag platform
-  fillRow(m2,10,78,5,T.GROUND); fillRow(m2,9,78,5,T.GROUND);
-  m2[8][80]=T.FLAG_REAL; m2[7][80]=T.FLAG_REAL;
-
-  // Bonus: hidden spike near real flag to troll
-  m2[8][79]=T.HIDDEN_SPIKE;
-
-  // Clouds
-  m2[2][12]=T.CLOUD; m2[2][13]=T.CLOUD; m2[3][35]=T.CLOUD; m2[3][36]=T.CLOUD;
-  m2[2][55]=T.CLOUD; m2[2][56]=T.CLOUD; m2[3][75]=T.CLOUD; m2[3][76]=T.CLOUD;
-
-  let e2=[
-    {x:15*TILE,y:12*TILE,type:'walker'},
-    {x:24*TILE,y:12*TILE,type:'walker'},
-    {x:36*TILE,y:12*TILE,type:'walker'},
-    {x:55*TILE,y:12*TILE,type:'jumper'},
-    {x:70*TILE,y:12*TILE,type:'walker'},
-  ];
-  levels.push({map:m2,w:L2_W,h:L2_H,startX:2*TILE,startY:11*TILE,enemies:e2,name:'天降正义',bgColor1:'#ff9a56',bgColor2:'#ffcc80'});
-
-
-  // ===== LEVEL 3: 终极试炼 (Ultimate Trial) =====
-  const L3_W=110, L3_H=15;
-  let m3=createEmptyMap(L3_W,L3_H);
-  fillRow(m3,13,0,L3_W,T.GROUND); fillRow(m3,14,0,L3_W,T.GROUND);
-
-  m3[12][2]=T.DECO_TREE; m3[12][4]=T.DECO_FLOWER; m3[12][6]=T.DECO_FLOWER;
-
-  // 1) Hidden spike gauntlet on ground (x=8-15)
-  for(let i=8;i<16;i+=2) m3[12][i]=T.HIDDEN_SPIKE;
-
-  // 2) Lava platforming (x=18-37) with mix of real/fall bricks
-  clearRect(m3,18,13,20,2);
-  for(let i=18;i<38;i++) m3[14][i]=T.LAVA;
-  [19,21,23,25,27,29,31,33,35,37].forEach((x,i)=>{
-    m3[10][x]=(i%3===1)?T.FALL_BRICK:T.BRICK;
-  });
-
-  // 3) Q-blocks over lava (all traps)
-  m3[7][22]=T.QBLOCK; m3[7][28]=T.QBLOCK; m3[7][34]=T.QBLOCK;
-
-  // 4) Spring trap -> ceiling spikes
-  m3[12][42]=T.SPRING_TRAP;
-  fillRow(m3,4,41,3,T.SPIKE);
-
-  // 5) Fake easy path with hidden spikes (x=48-57, elevated row 12)
-  fillRow(m3,12,48,10,T.BRICK);
-  m3[11][50]=T.HIDDEN_SPIKE; m3[11][53]=T.HIDDEN_SPIKE; m3[11][56]=T.HIDDEN_SPIKE;
-
-  // 6) THREE FAKE FLAGS in a row!
-  m3[11][62]=T.FLAG_FAKE; m3[12][62]=T.FLAG_FAKE;
-  m3[11][68]=T.FLAG_FAKE; m3[12][68]=T.FLAG_FAKE;
-  m3[11][74]=T.FLAG_FAKE; m3[12][74]=T.FLAG_FAKE;
-
-  // 7) REAL PATH — stepping stones from ground near x=44
-  // Ground(row12) -> row 10 step(x=44-45) -> row 7 step(x=48-49) -> upper route
-  fillRow(m3,10,44,2,T.BRICK);   // step 1: ground->row10 (3 tiles up)
-  fillRow(m3,7,48,2,T.BRICK);    // step 2: row10->row7 (3 tiles up)
-  fillRow(m3,7,52,3,T.BRICK);    // upper path continues
-  fillRow(m3,7,57,3,T.BRICK);
-  fillRow(m3,7,62,3,T.BRICK);
-  fillRow(m3,7,67,3,T.BRICK);
-  fillRow(m3,7,72,3,T.BRICK);
-  fillRow(m3,7,77,3,T.BRICK);
-
-  // 8) Descending staircase from upper path to flag area
-  fillRow(m3,8,82,3,T.BRICK);
-  fillRow(m3,9,86,3,T.BRICK);
-  fillRow(m3,10,90,3,T.BRICK);
-
-  // 9) Final gauntlet — elevated ground with hidden spikes
-  fillRow(m3,11,94,10,T.GROUND); fillRow(m3,12,94,10,T.GROUND);
-  m3[10][96]=T.HIDDEN_SPIKE; m3[10][99]=T.HIDDEN_SPIKE; m3[10][102]=T.HIDDEN_SPIKE;
-
-  // 10) REAL FLAG at end
-  fillRow(m3,10,105,4,T.GROUND); fillRow(m3,9,105,4,T.GROUND);
-  m3[8][107]=T.FLAG_REAL; m3[7][107]=T.FLAG_REAL;
-  m3[8][106]=T.DECO_FLOWER;
-
-  // Clouds
-  m3[2][10]=T.CLOUD; m3[2][11]=T.CLOUD; m3[3][30]=T.CLOUD; m3[3][31]=T.CLOUD;
-  m3[2][50]=T.CLOUD; m3[2][51]=T.CLOUD; m3[3][70]=T.CLOUD; m3[3][71]=T.CLOUD;
-  m3[2][90]=T.CLOUD; m3[2][91]=T.CLOUD; m3[3][105]=T.CLOUD; m3[3][106]=T.CLOUD;
-
-  let e3=[
-    {x:12*TILE,y:12*TILE,type:'walker'},
-    {x:40*TILE,y:12*TILE,type:'walker'},
-    {x:60*TILE,y:12*TILE,type:'jumper'},
-    {x:75*TILE,y:12*TILE,type:'walker'},
-    {x:97*TILE,y:10*TILE,type:'walker'},
-    {x:101*TILE,y:10*TILE,type:'jumper'},
-  ];
-  levels.push({map:m3,w:L3_W,h:L3_H,startX:2*TILE,startY:11*TILE,enemies:e3,name:'终极试炼',bgColor1:'#6c5ce7',bgColor2:'#a29bfe'});
+  // ===== LEVEL 10: 最终决战 (Final Showdown) — 220 tiles =====
+  (function(){
+    const W=220,H=15; let m=createEmptyMap(W,H);
+    addGround(m,0,10); m[12][2]=T.DECO_TREE; m[12][6]=T.DECO_FLOWER;
+    // Immediate hidden spike ambush
+    m[12][8]=T.HIDDEN_SPIKE; m[12][9]=T.HIDDEN_SPIKE;
+    // Lava maze 1
+    addLava(m,10,14); [11,14,17,20,23].forEach((x,i)=>{ m[10][x]=(i%3===2)?T.FALL_BRICK:T.BRICK; });
+    m[7][14]=T.QBLOCK; m[7][20]=T.QBLOCK;
+    addGround(m,24,6); m[12][25]=T.SPRING_TRAP; F(m,3,24,3,T.SPIKE);
+    m[12][28]=T.HIDDEN_SPIKE;
+    // Staircase
+    addGround(m,30,14); for(let i=0;i<5;i++){let r=12-i,c=32+i*2; F(m,r,c,2,T.BRICK); if(i===2||i===4) m[r][c]=T.HIDDEN_SPIKE;}
+    // Fake flag 1
+    addFlag(m,46,12,false);
+    addGround(m,44,6);
+    // Spring corridor
+    addGround(m,50,16); m[12][52]=T.SPRING_TRAP; m[12][56]=T.SPRING_TRAP; m[12][60]=T.SPRING_TRAP; m[12][64]=T.SPRING_TRAP;
+    F(m,3,51,16,T.SPIKE);
+    m[12][54]=T.HIDDEN_SPIKE; m[12][58]=T.HIDDEN_SPIKE; m[12][62]=T.HIDDEN_SPIKE;
+    // Lava canyon
+    addLava(m,66,20); [67,70,73,76,79,82,85].forEach((x,i)=>{ m[10][x]=(i===1||i===4)?T.FALL_BRICK:T.BRICK; });
+    m[7][70]=T.QBLOCK; m[7][79]=T.QBLOCK;
+    addGround(m,86,6); m[12][88]=T.HIDDEN_SPIKE; m[12][90]=T.HIDDEN_SPIKE;
+    // Fake flag 2
+    addFlag(m,94,12,false);
+    addGround(m,92,6);
+    // Fall brick floor trap
+    clearRect(m,100,13,8,2); F(m,12,100,8,T.FALL_BRICK); for(let i=100;i<108;i++) m[14][i]=T.SPIKE;
+    addGround(m,98,2); addGround(m,108,6);
+    // Q-blocks
+    m[9][110]=T.QBLOCK; m[9][112]=T.QBLOCK;
+    // Lava marathon 2
+    addLava(m,114,22); [115,118,121,124,127,130,133,135].forEach((x,i)=>{ m[10][x]=(i%4===2)?T.FALL_BRICK:T.BRICK; });
+    m[6][121]=T.QBLOCK; m[6][130]=T.QBLOCK;
+    addGround(m,136,8); m[12][138]=T.SPRING_TRAP; F(m,3,137,3,T.SPIKE);
+    m[12][140]=T.HIDDEN_SPIKE; m[12][142]=T.HIDDEN_SPIKE;
+    m[12][137]=T.DECO_FLOWER; m[12][143]=T.DECO_TREE;
+    // Fake flag 3
+    addFlag(m,148,12,false);
+    addGround(m,146,6);
+    // Fake flag 4 (hidden spike next to it)
+    addFlag(m,155,12,false);
+    addGround(m,152,6); m[12][153]=T.HIDDEN_SPIKE; m[12][157]=T.HIDDEN_SPIKE;
+    // Lava section 3
+    addLava(m,158,12); [159,162,165,169].forEach(x=>m[10][x]=T.BRICK); m[10][167]=T.FALL_BRICK;
+    addGround(m,170,6); m[12][172]=T.DECO_FLOWER;
+    // REAL PATH: vertical ascent
+    F(m,9,176,2,T.BRICK); F(m,5,180,3,T.BRICK); F(m,5,185,3,T.BRICK);
+    F(m,5,190,3,T.BRICK); F(m,5,195,3,T.BRICK);
+    // Fake flag at upper path!
+    m[4][192]=T.FLAG_FAKE; m[3][192]=T.FLAG_FAKE;
+    // Descend
+    F(m,7,200,3,T.BRICK); F(m,9,204,3,T.BRICK);
+    // Final gauntlet
+    addGround(m,207,12); m[12][209]=T.HIDDEN_SPIKE; m[12][212]=T.SPRING_TRAP;
+    F(m,3,211,3,T.SPIKE); m[12][215]=T.HIDDEN_SPIKE;
+    // REAL FLAG
+    F(m,11,214,5,T.GROUND); F(m,10,214,5,T.GROUND);
+    addFlag(m,216,10,true); m[10][215]=T.DECO_FLOWER; m[10][217]=T.DECO_FLOWER;
+    // Lava at bottom in empty areas
+    for(let i=10;i<207;i++) if(m[14][i]===T.AIR && m[13][i]===T.AIR) m[14][i]=T.LAVA;
+    // Clouds
+    m[2][8]=T.CLOUD;m[2][9]=T.CLOUD;m[3][30]=T.CLOUD;m[3][31]=T.CLOUD;
+    m[2][55]=T.CLOUD;m[2][56]=T.CLOUD;m[3][80]=T.CLOUD;m[3][81]=T.CLOUD;
+    m[2][105]=T.CLOUD;m[2][106]=T.CLOUD;m[3][130]=T.CLOUD;m[3][131]=T.CLOUD;
+    m[2][160]=T.CLOUD;m[2][161]=T.CLOUD;m[3][190]=T.CLOUD;m[3][191]=T.CLOUD;
+    m[2][215]=T.CLOUD;m[2][216]=T.CLOUD;
+    let en=[
+      {x:12*TILE,y:12*TILE,type:'walker'},{x:18*TILE,y:9*TILE,type:'jumper'},
+      {x:28*TILE,y:12*TILE,type:'walker'},{x:38*TILE,y:12*TILE,type:'walker'},
+      {x:50*TILE,y:12*TILE,type:'jumper'},{x:58*TILE,y:12*TILE,type:'walker'},
+      {x:72*TILE,y:9*TILE,type:'walker'},{x:82*TILE,y:9*TILE,type:'jumper'},
+      {x:90*TILE,y:12*TILE,type:'walker'},{x:104*TILE,y:12*TILE,type:'jumper'},
+      {x:120*TILE,y:9*TILE,type:'walker'},{x:128*TILE,y:9*TILE,type:'jumper'},
+      {x:140*TILE,y:12*TILE,type:'walker'},{x:152*TILE,y:12*TILE,type:'jumper'},
+      {x:164*TILE,y:9*TILE,type:'walker'},{x:208*TILE,y:12*TILE,type:'jumper'},
+      {x:213*TILE,y:12*TILE,type:'walker'},
+    ];
+    levels.push({map:m,w:W,h:H,startX:2*TILE,startY:11*TILE,enemies:en,name:'最终决战',bgColor1:'#2d3436',bgColor2:'#636e72'});
+  })();
 }
 
 // ============================================================
@@ -1182,7 +1551,7 @@ function winLevel(){
       document.getElementById('winDeaths').textContent=`总死亡: ${deaths} 次`;
       let elapsed=Math.floor((Date.now()-gameTime)/1000);
       document.getElementById('winTime').textContent=`总用时: ${Math.floor(elapsed/60)}:${String(elapsed%60).padStart(2,'0')}`;
-      let rank=deaths<10?'S  \u2014 传说级大神！':deaths<25?'A  \u2014 高手过招！':deaths<50?'B  \u2014 还行吧~':deaths<100?'C  \u2014 继续加油！':'F  \u2014 芳芳已哭晕在厕所';
+      let rank=deaths<30?'S  \u2014 传说级大神！':deaths<80?'A  \u2014 高手过招！':deaths<150?'B  \u2014 还行吧~':deaths<300?'C  \u2014 继续加油！':'F  \u2014 芳芳已哭晕在厕所';
       document.getElementById('winRank').textContent=rank;
     },1800);
   }
@@ -1221,7 +1590,7 @@ function update(){
   }
 
   player.vy+=GRAVITY;
-  if(player.vy>4.5) player.vy=4.5; // soft terminal velocity for floaty fall
+  if(player.vy>5.0) player.vy=5.0; // soft terminal velocity for floaty fall
 
   // Move X + collide
   player.x+=player.vx;
