@@ -1,0 +1,602 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>学工事务</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: system-ui, -apple-system, BlinkMacSystemFont, "PingFang SC", sans-serif;
+        }
+        body {
+            background-color: #f5f7fa;
+        }
+
+        /* 填写页 完全保留你的原有代码样式不变 */
+        #formPage {
+            padding: 10px;
+        }
+        .form-card {
+            background: #fff;
+            border-radius: 6px;
+            padding: 14px;
+        }
+        .form-title {
+            font-size: 17px;
+            font-weight: 500;
+            margin-bottom: 14px;
+            color: #222;
+        }
+        .form-item {
+            margin-bottom: 10px;
+        }
+        .form-item label {
+            display: block;
+            font-size: 14px;
+            color: #555;
+            margin-bottom: 3px;
+        }
+        .form-item input, .form-item select, .form-item textarea {
+            width: 100%;
+            padding: 9px 11px;
+            border: 1px solid #e0e0e0;
+            border-radius: 4px;
+            font-size: 15px;
+        }
+        .form-item textarea {
+            height: 65px;
+            resize: none;
+        }
+        .openSignBtn {
+            width: 100%;
+            height: 44px;
+            background: #28bc45;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            margin: 10px 0;
+        }
+        .previewSignBox {
+            border: 1px solid #ddd;
+            width: 280px;
+            height: 120px;
+            background: #fff;
+        }
+        #formSignCanvas {
+            width: 100%;
+            height: 100%;
+        }
+        .submit-btn {
+            width: 100%;
+            height: 46px;
+            background: #407bff;
+            color: #fff;
+            border: none;
+            border-radius: 6px;
+            font-size: 16px;
+            margin-top: 8px;
+        }
+
+        /* 全屏签名弹窗 原样保留 */
+        #fullSignModal {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background: #fff;
+            z-index: 9999;
+            display: none;
+            flex-direction: column;
+        }
+        .modalTopBar {
+            display: flex;
+            justify-content: space-between;
+            padding: 14px 18px;
+            align-items: center;
+            border-bottom: 1px solid #eee;
+        }
+        .modalTitle {
+            font-size: 18px;
+        }
+        .modalBtn {
+            padding: 8px 16px;
+            font-size: 16px;
+            border-radius: 4px;
+            border: none;
+        }
+        .cancelBtn {
+            background: #eee;
+        }
+        .confirmBtn {
+            background: #407bff;
+            color: #fff;
+        }
+        #fullCanvas {
+            flex: 1;
+            width: 100%;
+            touch-action: none;
+        }
+
+        /* ========== 预览页 全部字号缩小，严格对标原图尺寸 ========== */
+        #previewPage {
+            display: none;
+            background: #f5f7fa;
+        }
+        .header-bar {
+            height: 52px;
+            background: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            position: relative;
+        }
+        .back-arrow {
+            position: absolute;
+            left: 14px;
+            font-size: 22px;
+            color: #333333;
+        }
+        .header-title {
+            font-size: 20px;
+            color: #222;
+            font-weight: 500;
+        }
+        .breadcrumb {
+            background: #eef5ff;
+            padding: 10px 16px;
+            font-size: 14px;
+            color: #777777;
+        }
+        .blue-word {
+            color: #2178dd;
+        }
+        .module-wrap {
+            background: #ffffff;
+            margin: 8px 0;
+        }
+        .module-title {
+            display: flex;
+            align-items: center;
+            padding: 16px 16px;
+            font-size: 17px;
+            font-weight: 500;
+        }
+        .blue-vertical-line {
+            width: 4px;
+            height: 20px;
+            background-color: #407bff;
+            margin-right: 8px;
+        }
+        .row-item {
+            display: flex;
+            justify-content: space-between;
+            padding: 14px 16px;
+            border-top: 1px solid #eeeeee;
+            font-size: 16px;
+        }
+        .row-left {
+            color: #666666;
+        }
+        .row-right {
+            color: #222222;
+        }
+        .full-text-row {
+            padding: 8px 16px;
+            border-top: 1px solid #eee;
+            font-size: 16px;
+            color: #666666;
+            line-height: 1.5;
+        }
+        .progress-header {
+            display: flex;
+            justify-content: space-between;
+            padding-right: 16px;
+        }
+        .flow-link {
+            color: #2178dd;
+            font-size: 16px;
+        }
+        .progress-container {
+            padding: 6px 16px 18px;
+        }
+        .progress-node {
+            position: relative;
+            padding: 16px 0 16px 44px;
+            z-index: 1;
+        }
+        .progress-node::before {
+            content: "";
+            position: absolute;
+            left: 12px;
+            top: 0;
+            width: 2px;
+            height: 100%;
+            background-color: #407bff;
+            z-index: 2;
+        }
+        .progress-node:last-child::before {
+            height: 50%;
+        }
+        .check-circle {
+            position: absolute;
+            left: 0;
+            top: 16px;
+            width: 26px;
+            height: 26px;
+            border-radius: 50%;
+            border: 2px solid #407bff;
+            background: #fff;
+            color: #407bff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 14px;
+            font-weight: bold;
+            z-index: 2;
+        }
+        .node-top {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            position: relative;
+            z-index: 3;
+        }
+        .node-name {
+            font-size: 17px;
+        }
+        .green-status {
+            color: #28bc45;
+            margin-left: 6px;
+        }
+        .node-time {
+            font-size: 15px;
+            color: #888888;
+            z-index: 4;
+        }
+        .node-user {
+            margin-top: 6px;
+            font-size: 16px;
+            color: #666666;
+            z-index: 3;
+        }
+        .agree-word {
+            position: absolute;
+            right: 16px;
+            bottom: 16px;
+            color: #2178dd;
+            font-size: 16px;
+            z-index: 3;
+        }
+        
+        .sign-box {
+            position: absolute;
+            right: 8px;
+            top: 30px;
+            z-index: 0;
+        }
+        #signCanvas {
+            width: 182px;
+            height: 78px;
+            background: transparent;
+        }
+    </style>
+</head>
+<body>
+
+<!-- 填写页面 完全不变 -->
+<div id="formPage">
+    <div class="form-card">
+        <div class="form-title">请假信息填写</div>
+        <div class="form-item">
+            <label>姓名</label>
+            <input id="inp_name" value="">
+        </div>
+        <div class="form-item">
+            <label>学号</label>
+            <input id="inp_stuid" value="">
+        </div>
+        <div class="form-item">
+            <label>学院</label>
+            <input id="inp_college" value="信息工程系">
+        </div>
+        <div class="form-item">
+            <label>专业</label>
+            <input id="inp_major" value="计算机网络技术">
+        </div>
+        <div class="form-item">
+            <label>班级</label>
+            <input id="inp_class" value="2024计算机网络技术04">
+        </div>
+        <div class="form-item">
+            <label>联系方式</label>
+            <input id="inp_phone" value="">
+        </div>
+        <div class="form-item">
+            <label>请假类型</label>
+            <select id="inp_leavetype">
+                <option value="事假" selected>事假</option>
+                <option value="病假">病假</option>
+            </select>
+        </div>
+        <div class="form-item">
+            <label>请假去向</label>
+            <input id="inp_leavego" value="离校不离市">
+        </div>
+        <div class="form-item">
+            <label>详细地址</label>
+            <input id="inp_address" value="">
+        </div>
+        <div class="form-item">
+            <label>请假开始时间</label>
+            <input type="datetime-local" id="inp_starttime" value="2026-06-23T12:00">
+        </div>
+        <div class="form-item">
+            <label>请假结束时间</label>
+            <input type="datetime-local" id="inp_endtime" value="2026-06-23T17:00">
+        </div>
+        <div class="form-item">
+            <label>请假时长</label>
+            <input id="inp_duration" value="5小时">
+        </div>
+        <div class="form-item">
+            <label>紧急联系人</label>
+            <input id="inp_emname" value="">
+        </div>
+        <div class="form-item">
+            <label>紧急联系人电话</label>
+            <input id="inp_emphone" value="">
+        </div>
+        <div class="form-item">
+            <label>请假理由</label>
+            <textarea id="inp_reason"></textarea>
+        </div>
+        <div class="form-item">
+            <label>申请时间</label>
+            <input type="datetime-local" id="inp_applytime" value="2026-06-22T21:45">
+        </div>
+        <div class="form-item">
+            <label>班主任审核时间</label>
+            <input type="datetime-local" id="inp_checktime" value="2026-06-23T13:01">
+        </div>
+        <div class="form-item">
+            <label>审核人姓名</label>
+            <input id="inp_checkuser" value="邬兆江">
+        </div>
+
+        <button class="openSignBtn" onclick="openFullSign()">打开全屏手写签名</button>
+        <div class="previewSignBox">
+            <canvas id="formSignCanvas"></canvas>
+        </div>
+
+        <button class="submit-btn" onclick="switchToPreview()">确认生成请假单</button>
+    </div>
+</div>
+
+<!-- 全屏签名弹窗 完全不变 -->
+<div id="fullSignModal">
+    <div class="modalTopBar">
+        <span class="modalTitle">全屏手写签名</span>
+        <div>
+            <button class="modalBtn cancelBtn" onclick="closeFullSign()">取消</button>
+            <button class="modalBtn confirmBtn" onclick="confirmSign()">确定</button>
+        </div>
+    </div>
+    <canvas id="fullCanvas"></canvas>
+</div>
+
+<!-- 预览成品页 HTML结构完全不动，仅样式缩小字号 -->
+<div id="previewPage">
+    <div class="header-bar">
+        <span class="back-arrow" onclick="switchBackForm()">&lt;</span>
+        <span class="header-title">学工事务</span>
+    </div>
+    <div class="breadcrumb">
+        <span class="blue-word">首页</span> &gt; 我的事务
+    </div>
+
+    <div class="module-wrap">
+        <div class="module-title">
+            <div class="blue-vertical-line"></div>基础信息
+        </div>
+        <div class="row-item">
+            <span class="row-left">姓名</span>
+            <span class="row-right" id="view_name"></span>
+        </div>
+        <div class="row-item">
+            <span class="row-left">学号</span>
+            <span class="row-right" id="view_stuid"></span>
+        </div>
+    </div>
+
+    <div class="module-wrap">
+        <div class="module-title">
+            <div class="blue-vertical-line"></div>学籍信息
+        </div>
+        <div class="row-item">
+            <span class="row-left">学院</span>
+            <span class="row-right" id="view_college"></span>
+        </div>
+        <div class="row-item">
+            <span class="row-left">专业</span>
+            <span class="row-right" id="view_major"></span>
+        </div>
+        <div class="row-item">
+            <span class="row-left">班级</span>
+            <span class="row-right" id="view_class"></span>
+        </div>
+    </div>
+
+    <div class="module-wrap">
+        <div class="module-title">
+            <div class="blue-vertical-line"></div>联系信息
+        </div>
+        <div class="row-item">
+            <span class="row-left">联系方式</span>
+            <span class="row-right" id="view_phone"></span>
+        </div>
+    </div>
+
+    <div class="module-wrap">
+        <div class="module-title">
+            <div class="blue-vertical-line"></div>请假信息
+        </div>
+        <div class="full-text-row" id="view_leavetype"></div>
+        <div class="full-text-row" id="view_leavego"></div>
+        <div class="full-text-row" id="view_address"></div>
+        <div class="full-text-row" id="view_starttime"></div>
+        <div class="full-text-row" id="view_endtime"></div>
+        <div class="full-text-row" id="view_duration"></div>
+        <div class="full-text-row" id="view_emname"></div>
+        <div class="full-text-row" id="view_emphone"></div>
+        <div class="full-text-row" id="view_reason"></div>
+        <div class="full-text-row">附件：</div>
+    </div>
+
+    <div class="module-wrap">
+        <div class="module-title progress-header">
+            <div style="display:flex;align-items:center;"><div class="blue-vertical-line"></div>办理进度</div>
+            <span class="flow-link">查看流程图</span>
+        </div>
+        <div class="progress-container">
+            <div class="progress-node">
+                <div class="check-circle">✓</div>
+                <div class="node-top">
+                    <div class="node-name">申请 <span class="green-status">申请</span></div>
+                    <div class="node-time" id="view_applytime"></div>
+                </div>
+                <div class="node-user" id="view_applicant"></div>
+                <div class="sign-box">
+                    <canvas id="signCanvas"></canvas>
+                </div>
+            </div>
+            <div class="progress-node">
+                <div class="check-circle">✓</div>
+                <div class="node-top">
+                    <div class="node-name">班主任审核 <span class="green-status">审核通过</span></div>
+                    <div class="node-time" id="view_checktime"></div>
+                </div>
+                <div class="node-user" id="view_checkuser"></div>
+                <div class="agree-word">同意</div>
+            </div>
+            <div class="progress-node">
+                <div class="check-circle">✓</div>
+                <div class="node-top">
+                    <div class="node-name">结束</div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// JS脚本100%沿用你原来的，签名逻辑完全不动
+const fullCanvas = document.getElementById('fullCanvas');
+const fullCtx = fullCanvas.getContext('2d');
+const formCanvas = document.getElementById('formSignCanvas');
+const formCtx = formCanvas.getContext('2d');
+const previewCanvas = document.getElementById('signCanvas');
+const previewCtx = previewCanvas.getContext('2d');
+
+const lineWidthVal = 4;
+const lineColor = "#000";
+fullCtx.lineWidth = lineWidthVal; fullCtx.lineCap = 'round'; fullCtx.lineJoin = 'round'; fullCtx.strokeStyle = lineColor;
+formCtx.lineWidth = lineWidthVal; formCtx.lineCap = 'round'; formCtx.lineJoin = 'round'; formCtx.strokeStyle = lineColor;
+previewCtx.lineWidth = lineWidthVal; previewCtx.lineCap = 'round'; previewCtx.lineJoin = 'round'; previewCtx.strokeStyle = lineColor;
+
+let isDrawing = false, lastX = 0, lastY = 0, modalOpen = false;
+
+function openFullSign() {
+    modalOpen = true;
+    document.getElementById('fullSignModal').style.display = 'flex';
+    fullCanvas.width = window.innerWidth;
+    fullCanvas.height = window.innerHeight - 60;
+}
+function closeFullSign() {
+    modalOpen = false;
+    document.getElementById('fullSignModal').style.display = 'none';
+}
+function confirmSign() {
+    const imgData = fullCtx.getImageData(0,0,fullCanvas.width,fullCanvas.height);
+    formCtx.scale(formCanvas.width/fullCanvas.width, formCanvas.height/fullCanvas.height);
+    formCtx.putImageData(imgData,0,0);
+    closeFullSign();
+}
+
+function getTouchPos(e){
+    const rect = fullCanvas.getBoundingClientRect();
+    const t = e.touches[0];
+    return [t.clientX - rect.left, t.clientY - rect.top];
+}
+function touchStart(e){
+    if(!modalOpen) return; e.preventDefault(); isDrawing = true; [lastX,lastY] = getTouchPos(e);
+}
+function touchMove(e){
+    if(!modalOpen||!isDrawing) return; e.preventDefault();
+    const [x,y] = getTouchPos(e);
+    fullCtx.beginPath(); fullCtx.moveTo(lastX,lastY); fullCtx.lineTo(x,y); fullCtx.stroke();
+    lastX=x; lastY=y;
+}
+function touchEnd(){isDrawing=false;}
+fullCanvas.addEventListener('touchstart',touchStart);
+fullCanvas.addEventListener('touchmove',touchMove);
+fullCanvas.addEventListener('touchend',touchEnd);
+fullCanvas.addEventListener('touchcancel',touchEnd);
+
+function switchToPreview(){
+    const name = document.getElementById('inp_name').value;
+    const stuid = document.getElementById('inp_stuid').value;
+    const college = document.getElementById('inp_college').value;
+    const major = document.getElementById('inp_major').value;
+    const className = document.getElementById('inp_class').value;
+    const phone = document.getElementById('inp_phone').value;
+    const leaveType = document.getElementById('inp_leavetype').value;
+    const leaveGo = document.getElementById('inp_leavego').value;
+    const address = document.getElementById('inp_address').value;
+    const startTime = document.getElementById('inp_starttime').value.replace('T',' ');
+    const endTime = document.getElementById('inp_endtime').value.replace('T',' ');
+    const duration = document.getElementById('inp_duration').value;
+    const emName = document.getElementById('inp_emname').value;
+    const emPhone = document.getElementById('inp_emphone').value;
+    const reason = document.getElementById('inp_reason').value;
+    const applyTime = document.getElementById('inp_applytime').value.replace('T',' ');
+    const checkTime = document.getElementById('inp_checktime').value.replace('T',' ');
+    const checkUser = document.getElementById('inp_checkuser').value;
+
+    document.getElementById('view_name').innerText = name;
+    document.getElementById('view_stuid').innerText = stuid;
+    document.getElementById('view_college').innerText = college;
+    document.getElementById('view_major').innerText = major;
+    document.getElementById('view_class').innerText = className;
+    document.getElementById('view_phone').innerText = phone;
+    document.getElementById('view_leavetype').innerText = `请假类型：${leaveType}`;
+    document.getElementById('view_leavego').innerText = `请假去向：${leaveGo}`;
+    document.getElementById('view_address').innerText = `详细地址：${address}`;
+    document.getElementById('view_starttime').innerText = `请假开始时间：${startTime}`;
+    document.getElementById('view_endtime').innerText = `请假结束时间：${endTime}`;
+    document.getElementById('view_duration').innerText = `请假时长天：${duration}`;
+    document.getElementById('view_emname').innerText = `紧急联系人：${emName}`;
+    document.getElementById('view_emphone').innerText = `紧急联系人电话：${emPhone}`;
+    document.getElementById('view_reason').innerText = `请假理由：${reason}`;
+    document.getElementById('view_applytime').innerText = applyTime;
+    document.getElementById('view_checktime').innerText = checkTime;
+    document.getElementById('view_applicant').innerText = name;
+    document.getElementById('view_checkuser').innerText = checkUser;
+
+    previewCtx.scale(previewCanvas.width/formCanvas.width, previewCanvas.height/formCanvas.height);
+    previewCtx.putImageData(formCtx.getImageData(0,0,formCanvas.width,formCanvas.height),0,0);
+
+    document.getElementById('formPage').style.display = 'none';
+    document.getElementById('previewPage').style.display = 'block';
+}
+function switchBackForm(){
+    document.getElementById('previewPage').style.display = 'none';
+    document.getElementById('formPage').style.display = 'block';
+}
+</script>
+</body>
+</html>
